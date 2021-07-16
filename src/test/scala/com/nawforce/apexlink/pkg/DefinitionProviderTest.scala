@@ -253,4 +253,21 @@ class DefinitionProviderTest extends AnyFunSuite with TestHelper {
                 Location(1, 13, 1, 16))))
     }
   }
+
+  test("Damian Test") {
+    FileSystemHelper.run(
+      Map("Dummy.cls" -> "public class Dummy { String field = 'd'; void method1() {} }",
+        "Foo.cls" ->     "public class Foo { Dummy field = new Dummy(); void method2() {Dummy d = new Dummy(); d.method1(); } }")) {
+      root: PathLike =>
+        val org = createHappyOrg(root)
+        assert(
+          org.unmanaged
+            .getDefinition(root.join("Foo.cls"), line = 1, offset = 62, None)
+            .contains(
+              LocationLink(Location(1, 23, 1, 26),
+                root.join("Foo.cls").toString,
+                Location(1, 0, 1, 20),
+                Location(1, 13, 1, 16))))
+    }
+  }
 }

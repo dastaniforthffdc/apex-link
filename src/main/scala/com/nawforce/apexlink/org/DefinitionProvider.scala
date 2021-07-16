@@ -22,16 +22,87 @@ import com.nawforce.pkgforce.diagnostics.Location
 import com.nawforce.pkgforce.documents.{ApexClassDocument, MetadataDocument}
 import com.nawforce.pkgforce.names.{Name, TypeName}
 import com.nawforce.pkgforce.path.PathLike
-import com.nawforce.runtime.parsers.ByteArraySourceData
+import com.nawforce.runtime.parsers.PageParser.ParserRuleContext
+import com.nawforce.runtime.parsers.{ApexParser, ApexParserBaseVisitor, ByteArraySourceData, CodeParser, SourceData}
 
 import java.io.{BufferedReader, StringReader}
 import java.nio.charset.StandardCharsets
 import scala.annotation.tailrec
+import scala.collection.{immutable, mutable}
 import scala.jdk.CollectionConverters._
 import scala.util.{Success, Try, Using}
 
+
+class VariablesVisitor(line: Int, offset: Int) extends ApexParserBaseVisitor[Unit] {
+
+  var captureVariable : Boolean = false
+
+  def containsChar(ctx: ParserRuleContext) : Boolean = {
+      (ctx.start.getLine < line || (ctx.start.getLine == line && ctx.start.getCharPositionInLine <= offset ))&&
+        (ctx.stop.getLine > line || (ctx.stop.getLine == line && ctx.stop.getCharPositionInLine >= offset))
+  }
+
+  def capture(f: () => Unit): Unit = {
+    val currentCapturing = captureVariable
+    captureVariable = true
+    f()
+    captureVariable = currentCapturing
+  }
+
+  def mayBeCapture(ctx: ParserRuleContext, f: () => Unit): Unit = {
+    val shouldCapture = containsChar(ctx)
+    if(shouldCapture) capture(f) else f()
+  }
+
+  override def visitFieldDeclaration(ctx: ApexParser.FieldDeclarationContext): Unit = {
+    super.visitFieldDeclaration(ctx)
+    variables(ctx.variableDeclarators().variableDeclarator(0).id().getText) = ctx.typeRef().getText
+  }
+
+  override def visitPropertyDeclaration(ctx: ApexParser.PropertyDeclarationContext): Unit = {
+    super.visitPropertyDeclaration(ctx)
+    variables(ctx.id().getText) = ctx.typeRef().getText
+  }
+
+  override def visitMethodDeclaration(ctx: ApexParser.MethodDeclarationContext): Unit = {
+    mayBeCapture(ctx, () => super.visitMethodDeclaration(ctx))
+  }
+
+  override def visitBlock(ctx: ApexParser.BlockContext): Unit = {
+    mayBeCapture(ctx, () => super.visitBlock(ctx))
+  }
+
+  private val variables:  mutable.HashMap[String, String] = mutable.HashMap.empty
+
+  def getVariables: immutable.Map[String, String] = {
+    variables.toMap
+  }
+
+  override def visitFormalParameter(ctx: ApexParser.FormalParameterContext): Unit = {
+    super.visitFormalParameter(ctx)
+    if(captureVariable) {
+      variables(ctx.id().getText) = ctx.typeRef().getText
+    }
+  }
+
+  override def visitLocalVariableDeclaration(ctx: ApexParser.LocalVariableDeclarationContext): Unit = {
+    super.visitLocalVariableDeclaration(ctx)
+    if(captureVariable) {
+      variables(ctx.variableDeclarators().variableDeclarator(0).id().getText) = ctx.typeRef().getText
+    }
+  }
+}
+
 trait DefinitionProvider {
   this: PackageImpl =>
+
+  def findVariables(path: PathLike, source: String, line: Int, offset: Int): Map[String, String] = {
+
+    val visitor = new VariablesVisitor(line, offset)
+    val tree = CodeParser(path, SourceData(source)).parseClass().value
+    visitor.visit(tree)
+    visitor.getVariables
+  }
 
   def getDefinition(path: PathLike, line: Int, offset: Int, content: Option[String]): Array[LocationLink] = {
     val sourceOpt = content.orElse(path.read().toOption)
@@ -39,10 +110,12 @@ trait DefinitionProvider {
       return Array.empty
     val source = sourceOpt.get
 
+    val variables = findVariables(path, source, line, offset)
+
     val fullExprAndLocation = extractExpression(source, line, offset)
 
     val exprLocationAndType = fullExprAndLocation
-      .flatMap(expr => findTypeInExpression(path, line, offset, source, expr))
+      .flatMap(expr => findTypeInExpression(path, line, offset, source, expr, variables))
 
     if (fullExprAndLocation.isEmpty || exprLocationAndType.isEmpty)
       return Array.empty
@@ -89,12 +162,13 @@ trait DefinitionProvider {
       Array.empty
   }
 
-  @tailrec
-  private def findTypeInExpression(path: PathLike,
+   @tailrec
+   private def findTypeInExpression(path: PathLike,
                                    line: Int,
                                    offset: Int,
                                    source: String,
-                                   exprAndLocation: (String, Location)): Option[(String, Location, ApexDeclaration)] = {
+                                   exprAndLocation: (String, Location),
+                                   variables: Map[String, String]): Option[(String, Location, ApexDeclaration)] = {
 
     def findTypeForExpression(path: PathLike,
                               line: Int,
@@ -108,12 +182,21 @@ trait DefinitionProvider {
       }
     }
 
+    val possibleType = variables
+      .get(exprAndLocation._1)
+      .flatMap(tn => findTypeForExpression(path, line, offset, source, (tn,exprAndLocation._2)) match {
+         case Some(ad: ApexDeclaration) => Some((exprAndLocation._1, exprAndLocation._2, ad))
+         case _ => None
+     })
+     if(possibleType.isDefined)
+       return possibleType
+
     findTypeForExpression(path, line, offset, source, exprAndLocation) match {
       case Some(ad: ApexDeclaration) => Some((exprAndLocation._1, exprAndLocation._2, ad))
       case Some(_)                   => None
       case None =>
         lessSpecificExpression(exprAndLocation) match {
-          case Some(expr) => findTypeInExpression(path, line, offset, source, expr)
+          case Some(expr) => findTypeInExpression(path, line, offset, source, expr, variables)
           case None       => None
         }
     }
