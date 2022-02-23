@@ -48,16 +48,8 @@ jobs:
 
   test_java_8:
     needs: build
-    uses: .github/workflows/reusable_tests.yml
+    uses: ./.github/workflows/reusable_tests.yml
     with:
       agent: "ubuntu-latest"
       java_version: "8"    
-
-  test_java_11:
-    needs: build
-    uses: .github/workflows/reusable_tests.yml
-    with:
-      agent: "ubuntu-latest"
-      java_version: "11"    
-
 
