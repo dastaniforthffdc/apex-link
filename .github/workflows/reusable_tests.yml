@@ -23,7 +23,6 @@ jobs:
       with:
         distribution: adopt
         java-version: ${{ inputs.java_version }}
-        cache: "maven"
 
     - uses: actions/checkout@v2
       with:
