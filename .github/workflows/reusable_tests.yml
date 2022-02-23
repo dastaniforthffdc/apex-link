@@ -1,0 +1,50 @@
+name: Tests
+
+on:
+  workflow_call:
+    inputs:
+      agent:
+        description: 'Agent to run on'
+        required: true
+        type: string
+      java_version:
+        description: 'Java version to install'
+        required: true
+        type: string
+
+jobs:
+  tests:
+    runs-on: ${{ input.agent }}
+
+    steps:
+
+    - name: Set up java
+      uses: actions/setup-java@v2
+      with:
+        distribution: adopt
+        java-version: ${{ inputs.java_version }}
+        cache: "maven"
+
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - uses: actions:download-artifact@v2
+      with:
+        name: dependencies
+        path: ./artifacts/dependencies
+
+    - uses: actions:download-artifact@v2
+      with:
+        name: apexlink
+        path: ./artifacts
+
+    - name: display build
+      run: ls -l ./artifacts
+
+    - name: display java version
+      run: java -version
+
+    - name: TriggerX
+      run: java -cp "./artifacts/dependencies/*:./artifacts/apexlink.jar" com.nawforce.apexlink.ApexLink -verbose samples/TriggerX/TriggerX
+
