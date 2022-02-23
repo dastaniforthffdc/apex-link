@@ -14,7 +14,7 @@ on:
 
 jobs:
   tests:
-    runs-on: ${{ input.agent }}
+    runs-on: ${{ inputs.agent }}
 
     steps:
 
