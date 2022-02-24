@@ -1,0 +1,22 @@
+name: windows build and tests 
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_java_8:
+    uses: ./.github/workflows/reusable_windows_build.yml
+    with:
+      java_version: "8"    
+      dependencies_name: "windows_java_8_deps"
+      artifact_name: "windows_java_8"
+
+  test_java_8:
+    needs: build_java_8
+    uses: ./.github/workflows/reusable_tests.yml
+    with:
+      agent: "ubuntu-latest"
+      java_version: "8"    
+      dependencies_name: "windows_java_8_deps"
+      artifact_name: "windows_java_8"
+
