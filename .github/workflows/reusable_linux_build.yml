@@ -67,10 +67,3 @@ jobs:
         path: ./apexlink/target/apexlink.jar
         retention-days: 1
 
-  test_java_8:
-    needs: build
-    uses: ./.github/workflows/reusable_tests.yml
-    with:
-      agent: "ubuntu-latest"
-      java_version: "8"    
-
