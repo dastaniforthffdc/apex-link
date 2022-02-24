@@ -11,6 +11,14 @@ on:
         description: 'Java version to install'
         required: true
         type: string
+      dependencies_name:
+        description: 'Name for dependencies artifact'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Name for apexlink artifact'
+        required: true
+        type: string
 
 jobs:
   tests:
@@ -30,12 +38,12 @@ jobs:
 
     - uses: actions/download-artifact@v2
       with:
-        name: dependencies
+        name: ${{ inputs.dependencies_name }}
         path: ./artifacts/dependencies
 
     - uses: actions/download-artifact@v2
       with:
-        name: apexlink
+        name: ${{ inputs.artifact_name }}
         path: ./artifacts
 
     - name: display build
